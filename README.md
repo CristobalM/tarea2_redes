@@ -11,6 +11,10 @@ make
 
 Con esto se genera el ejecutable cliente_t2_redes
 
+Para probar el siguiente ejemplo, desde la carpeta build ejecutar el comando:
+
+cp ../resultado_gen_noel.txt .
+
 Ejemplo de ejecucion:
 
 ./cliente_t2_redes_ex --server_host=127.0.0.1 --file_name="resultado_gen_noel.txt" --window_size=128 --packet_size=800 --max_sequence_number=7 --server_port=8989 --client_port=9090
