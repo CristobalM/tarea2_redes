@@ -30,7 +30,7 @@ ClientSender::ClientSender(int chunkSize, ClientSubject *clientSubject) :
         last_acked_packet(-1),
         max_seq_num_sent(-1),
         finished_sending_data(false) {
-  asio::socket_base::send_buffer_size option(packet_size + 32 + max_seq_number + 20000);
+  asio::socket_base::send_buffer_size option(packet_size + 32 + max_seq_number + 256);
   socket.set_option(option);
 
 }
