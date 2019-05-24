@@ -20,8 +20,10 @@
 
 using asio::ip::udp;
 
-const int TIMEOUT_MILLISECONDS_WAIT = 1000;
-const int UNRELIABLE_PACKET_DELAY_MS = 0;
+const int TIMEOUT_MILLISECONDS_WAIT = 2000;
+const int UNRELIABLE_PACKET_DELAY_MS = 150;
+
+const double ALPHA = 0.125;
 
 
 using timer_uptr = std::unique_ptr<Timer<std::function<void()>>>;
@@ -72,14 +74,24 @@ class ClientSender {
 
   std::vector<std::unique_ptr<Packet>> window_map;
 
+  std::vector<int> sampled_rtts;
+  std::vector<int> estimated_rtts;
+
+  int estimated_rtt = TIMEOUT_MILLISECONDS_WAIT;
+
+
+
+
   std::mutex bidx_mutex, nqn_mutex, ackcount_mutex, timer_mutex;
+
+  std::mutex estimated_rtt_mutex;
 
 
   void threadFun();
 
   bool sendChunk();
 
-  Packet generatePacket(const std::string &raw_data, int packet_seq_num);
+  std::unique_ptr<Packet> generatePacket(const std::string &raw_data, int packet_seq_num);
 
   std::vector<std::string> generatePacketsData(char *raw_data, int data_size);
 
@@ -123,6 +135,8 @@ public:
   int getBaseIdx();
 
   int getWindowSize();
+
+  void calculateEstimatedRTT();
 
 
 };

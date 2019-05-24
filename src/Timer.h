@@ -13,31 +13,34 @@
 
 template<typename Fun>
 class Timer {
-  int milliseconds;
+  int milliseconds{};
   Fun fun;
 
-  bool detach;
+  bool detach{};
 
-  volatile bool stopped;
+  volatile bool stopped{};
 
-  int delta_check_ms;
+  int delta_check_ms{};
 
   std::unique_ptr<std::thread> timer_thread;
 
   std::mutex mutex;
   std::condition_variable condition_variable;
 
-  bool started;
+  bool started = false;
 
-  bool finished;
+  bool finished = false;
+
 
 public:
 
-  Timer() : started(false), finished(false) {}
+  Timer()= default;
+
+
+
 
   Timer(int miliseconds, Fun fun, int delta_check_ms = 100, bool detach = false) :
-          milliseconds(miliseconds), fun(fun), stopped(false), delta_check_ms(delta_check_ms), detach(detach),
-          started(false), finished(false) {
+          milliseconds(miliseconds), fun(fun), stopped(false), delta_check_ms(delta_check_ms), detach(detach){
     start();
   }
 
@@ -117,6 +120,7 @@ public:
     return finished;
 
   }
+
 
 
 };

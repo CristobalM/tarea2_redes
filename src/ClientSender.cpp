@@ -8,6 +8,8 @@
 #include "Timer.h"
 
 
+
+
 ClientSender::ClientSender(int chunkSize, ClientSubject *clientSubject) :
         dataProcessor(clientSubject->getFilename(), chunkSize),
         clientSubject(clientSubject),
@@ -29,7 +31,11 @@ ClientSender::ClientSender(int chunkSize, ClientSubject *clientSubject) :
         acked_count(0),
         last_acked_packet(-1),
         max_seq_num_sent(-1),
-        finished_sending_data(false) {
+        finished_sending_data(false),
+
+        sampled_rtts(max_seq_num_b10 + 1, 0),
+        estimated_rtts(max_seq_num_b10 + 1, 1000)
+        {
   asio::socket_base::send_buffer_size option(packet_size + 32 + max_seq_number + 256);
   socket.set_option(option);
 
@@ -50,8 +56,8 @@ ClientSender::~ClientSender() {
 }
 
 
-Packet ClientSender::generatePacket(const std::string &raw_data, int packet_seq_num) {
-  return Packet(max_seq_number, packet_seq_num, raw_data);
+std::unique_ptr<Packet> ClientSender::generatePacket(const std::string &raw_data, int packet_seq_num) {
+  return std::make_unique<Packet>(max_seq_number, packet_seq_num, raw_data);
 }
 
 
@@ -109,10 +115,11 @@ void ClientSender::sendPacketReliable(const std::string &raw_data) {
     }
   }
 
-  window_map[next_seq_num] = std::make_unique<Packet>(generatePacket(raw_data, next_seq_num));
-  auto packet = *(window_map[next_seq_num]);
+  window_map[next_seq_num] = generatePacket(raw_data, next_seq_num);
+  auto &packet = *(window_map[next_seq_num]);
 
   std::cout << "sendPacketReliable, sending: '" << packet.generatePacketString() << "'" << std::endl;
+  packet.startTimeoutCount();
   sendPacketUnreliable(packet.generatePacketString());
 
   std::cout << "getBaseIdx() == getNextSeqNum()?, base_idx: " << getBaseIdx() << ", nextseqnum: " << getNextSeqNum()
@@ -129,7 +136,9 @@ void ClientSender::sendPacketReliable(const std::string &raw_data) {
 void ClientSender::timeoutHandler() {
   std::cout << "timeout... timeoutHandler working" << std::endl;
   for (int i = getBaseIdx(); i < getNextSeqNum(); i++) {
-    sendPacketUnreliable(window_map[i]->generatePacketString());
+    auto &packet = window_map[i];
+    packet->setRetransmitted();
+    sendPacketUnreliable(packet->generatePacketString());
   }
   startTimeoutTimer();
 }
@@ -172,7 +181,8 @@ void ClientSender::startTimeoutTimer() {
   }
   olderTimers.push_back(std::move(timeoutTimer));
 
-  timeoutTimer = std::move(startTimeout<std::function<void()>>(TIMEOUT_MILLISECONDS_WAIT,
+  std::lock_guard<std::mutex> rtt_lock(estimated_rtt_mutex);
+  timeoutTimer = std::move(startTimeout<std::function<void()>>(estimated_rtt,
                                                                std::bind(&ClientSender::timeoutHandler, this)));
 }
 
@@ -218,6 +228,22 @@ void ClientSender::ackedPacket(int seqnum) {
       return;
     }
     //std::cout << "Acked packet, seqnum: " << seqnum << ", last_acked_packet =" << last_acked_packet << std::endl;
+
+
+    auto &packet = *window_map[seqnum];
+
+    if(!packet.getRetransmitted()){
+      std::lock_guard<std::mutex> rtt_lock(estimated_rtt_mutex);
+      auto sampled_rtt = (std::chrono::duration_cast<std::chrono::milliseconds >(
+          std::chrono::system_clock::now().time_since_epoch()) - packet.getStartingTime()).count();
+
+
+      estimated_rtt = (int)((1 - ALPHA) * estimated_rtt + ALPHA * sampled_rtt);
+      std::cout << "SAMPLED_RTT: " << sampled_rtt << std::endl;
+      std::cout << "estimated_rtt: " << estimated_rtt << std::endl;
+
+
+    }
 
     if (seqnum < last_acked_packet) {
       std::cout << "seqnum < last_acked_packed: " << seqnum << " < " << last_acked_packet << std::endl;
@@ -307,5 +333,10 @@ void ClientSender::setBaseIdx(int new_value) {
 
 int ClientSender::getWindowSize() {
   return window_size;
+}
+
+void ClientSender::calculateEstimatedRTT() {
+
+
 }
 

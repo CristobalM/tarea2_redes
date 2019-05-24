@@ -8,6 +8,9 @@
 
 #include <string>
 #include <iostream>
+#include <chrono>
+
+#include <mutex>
 
 #include "digestpp-master/digestpp.hpp"
 
@@ -20,12 +23,25 @@ class Packet {
   std::string packetString;
   bool cached;
 
+  bool retransmitted;// = false;
+  std::mutex retransmitted_mutex;
+
+  std::chrono::milliseconds starting_time;
+
+
 public:
+
+  Packet() = default;
+
+
   Packet(int seqnum_digits, int seqnum, const std::string &packet_data) :
           seqnum_digits(seqnum_digits),
           seqnum(seqnum),
           packet_data(packet_data),
-          cached(false) {
+          cached(false),
+          retransmitted(false),
+          starting_time(0)
+          {
   }
 
   static std::string getHashFromString(const std::string &inputString) {
@@ -94,6 +110,27 @@ public:
 
     return packetString;
   }
+
+  void setRetransmitted(){
+    std::lock_guard<std::mutex> lg(retransmitted_mutex);
+    retransmitted = true;
+  }
+
+  bool getRetransmitted(){
+    std::lock_guard<std::mutex> lg(retransmitted_mutex);
+    return retransmitted;
+  }
+
+  void startTimeoutCount(){
+    starting_time = std::chrono::duration_cast<std::chrono::milliseconds >(
+        std::chrono::system_clock::now().time_since_epoch()
+    );
+  }
+
+  std::chrono::milliseconds getStartingTime(){
+    return starting_time;
+  }
+
 };
 
 
