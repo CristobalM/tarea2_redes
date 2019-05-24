@@ -20,7 +20,7 @@
 
 using asio::ip::udp;
 
-const int TIMEOUT_MILLISECONDS_WAIT = 2000;
+const int TIMEOUT_MILLISECONDS_WAIT = 1000;
 const int UNRELIABLE_PACKET_DELAY_MS = 150;
 
 const double ALPHA = 0.125;

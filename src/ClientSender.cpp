@@ -134,6 +134,11 @@ void ClientSender::sendPacketReliable(const std::string &raw_data) {
 
 
 void ClientSender::timeoutHandler() {
+  std::lock_guard<std::mutex> lg(ackcount_mutex);
+  if(finished_sending_data){
+    std::cout << "timeoutHandler: Cancelling.." << std::endl;
+    return;
+  }
   std::cout << "timeout... timeoutHandler working" << std::endl;
   for (int i = getBaseIdx(); i < getNextSeqNum(); i++) {
     auto &packet = window_map[i];
