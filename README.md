@@ -1,3 +1,11 @@
+# Tarea 2 - Redes
+Integrantes: **Sebastián Donoso, Cristóbal Miranda.**
+
+# Instrucciones
+
+La tarea se probó en Ubuntu 18.04 en un computador personal y también en anakena.dcc.uchile.cl.
+
+
 ## Para compilar
 
 
