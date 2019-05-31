@@ -25,8 +25,13 @@ Con esto se genera el ejecutable cliente_t2_redes.
 Recordar poner el archivo txt a enviar en al carpeta build
 
 ## Modo de uso
+```console
 ./cliente_t2_redes --server_host=HOSTNAME --file_name="PATH TO FILE" --window_size=WINDOWS_SIZE --packet_size=PACKET_SIZE --max_sequence_number=MAX_SEQUENCE_NUMBER --server_port=SERVER_PORT --client_port=CLIENT_PORT
+```
 
+* **WARNING: packet_size + max_sequence_number + 32 debe ser a lo más 1024!!!!! El servidor no acepta más que eso y probablemente se caiga el programa por aca **
+
+* Al terminarse de enviar el archivo, para cerrar el cliente hacer Ctrl-C
 
 ## Ejemplo
 
