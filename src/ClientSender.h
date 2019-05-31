@@ -138,6 +138,8 @@ public:
 
   void calculateEstimatedRTT();
 
+  bool canAdvance();
+
 
 };
 
