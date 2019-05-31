@@ -1,4 +1,8 @@
 # Tarea 2 - Redes
+
+[https://github.com/CristobalM/tarea2_redes](https://github.com/CristobalM/tarea2_redes)
+
+
 Integrantes: **Sebastián Donoso, Cristóbal Miranda.**
 
 # Instrucciones
