@@ -61,4 +61,4 @@ Y en el servidor:
 * packet_size no es exactamente el tamaño de los paquetes, es el tamaño (maximo) de los datos en un paquete,
 el tamaño real de los paquetes es (en bytes): packet_size + max_sequence_number + 32
 
-* No poner max_sequence
+* No poner en max_sequence un numero mayor a 7 o el programa puede que crashee
