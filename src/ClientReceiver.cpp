@@ -38,7 +38,6 @@ void ClientReceiver::threadFun() {
     udp::endpoint endpoint;
     std::fill(tmp_buffer.get(), tmp_buffer.get() + buffer_sz, 0);
     size_t recv_length = socket.receive_from(asio::buffer(tmp_buffer.get(), buffer_sz), endpoint);
-    std::this_thread::sleep_for(std::chrono::milliseconds(15));
     if (recv_length == 0) {
       break;
     }
