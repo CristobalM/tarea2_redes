@@ -46,7 +46,7 @@ void ClientReceiver::threadFun() {
     std::string input_raw_packet(tmp_buffer.get());
     if (Packet::checkPacketIntegrity(input_raw_packet, max_seq_number)) {
       auto packet_seq_num = Packet::extract_seq_num(input_raw_packet, max_seq_number);
-      std::cout << "Receiver calling acked packet" << std::endl;
+      //std::cout << "Receiver calling acked packet" << std::endl;
       clientSubject->ackedPacket(packet_seq_num);
     }
   }

@@ -3,8 +3,10 @@ Integrantes: **Sebastián Donoso, Cristóbal Miranda.**
 
 # Instrucciones
 
-La tarea se probó en Ubuntu 18.04 en un computador personal y también en anakena.dcc.uchile.cl.
+* La tarea se probó en Ubuntu 18.04 en un computador personal y también en anakena.dcc.uchile.cl.
 
+* Es necesario tener instalado CMake VERSION 3.10 o superior, si se tiene otra versión también puede servir cambiarla en los
+CMakeLists.txt de la carpeta raiz y src.
 
 ## Para compilar
 
@@ -18,8 +20,13 @@ cmake ..
 make
 ```
 
-
 Con esto se genera el ejecutable cliente_t2_redes.
+
+Recordar poner el archivo txt a enviar en al carpeta build
+
+## Modo de uso
+./cliente_t2_redes --server_host=HOSTNAME --file_name="PATH TO FILE" --window_size=WINDOWS_SIZE --packet_size=PACKET_SIZE --max_sequence_number=MAX_SEQUENCE_NUMBER --server_port=SERVER_PORT --client_port=CLIENT_PORT
+
 
 ## Ejemplo
 
@@ -46,3 +53,12 @@ Y en el servidor:
 * El segundo parametro de server (8989) debe ser el mismo que --server_port,
 * El tercer parametro de server debe (9090) ser el mismo que --client_port=9090,
 * El cuarto parametro de server es la ip del cliente
+
+
+
+### Sobre parametros
+
+* packet_size no es exactamente el tamaño de los paquetes, es el tamaño (maximo) de los datos en un paquete,
+el tamaño real de los paquetes es (en bytes): packet_size + max_sequence_number + 32
+
+* No poner max_sequence
