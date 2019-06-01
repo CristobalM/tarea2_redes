@@ -84,46 +84,53 @@ std::vector<std::string> ClientSender::generatePacketsData(char *raw_data, int d
 }
 
 
+
+bool ClientSender::canAdvance() {
+  auto next_seq_num_ = this->getNextSeqNum();
+  auto base_idx_ = this->getBaseIdx();
+  auto wsize_ = this->getWindowSize();
+  /*std::cout << "cs->getNextSeqNum() < cs->getBaseIdx() + cs->getWindowSize()" << std::endl <<
+            next_seq_num_ << "  <  " << base_idx_ << " + " << wsize_ << " = " << base_idx_ + wsize_ << std::endl;*/
+
+  std::lock_guard<std::mutex> lg(this->ackcount_mutex);
+  //std::cout << "last acked packet: " << this->last_acked_packet << std::endl;
+
+  return (base_idx_ <= next_seq_num_ && next_seq_num_ < base_idx_ + wsize_) ||
+      (base_idx_ < next_seq_num_ && next_seq_num_ < (base_idx_ + wsize_ ) % (this->max_seq_num_b10 +1) );
+
+  /*
+  return ((next_seq_num_ == 0 && (cs->last_acked_packet == cs->max_seq_num_b10 || cs->last_acked_packet <= 0)) ||
+          next_seq_num_ != 0)
+         && next_seq_num_ < base_idx_ + wsize_;
+         */
+}
+
+
 void ClientSender::sendPacketReliable(const std::string &raw_data) {
   {
     std::unique_lock<std::mutex> lk(packet_send_mutex);
-    std::cout << "<>Waiting.." << std::endl;
-    packet_send_cv.wait(lk, [cs = this]() {
-      auto next_seq_num_ = cs->getNextSeqNum();
-      auto base_idx_ = cs->getBaseIdx();
-      auto wsize_ = cs->getWindowSize();
-      std::cout << "cs->getNextSeqNum() < cs->getBaseIdx() + cs->getWindowSize()" << std::endl <<
-                next_seq_num_ << "  <  " << base_idx_ << " + " << wsize_ << " = " << base_idx_ + wsize_ << std::endl;
-
-      std::lock_guard<std::mutex> lg(cs->ackcount_mutex);
-      std::cout << "last acked packet: " << cs->last_acked_packet << std::endl;
-      return ((next_seq_num_ == 0 && (cs->last_acked_packet == cs->max_seq_num_b10 || cs->last_acked_packet <= 0)) ||
-              next_seq_num_ != 0)
-             && next_seq_num_ < base_idx_ + wsize_;
-    });
-    std::cout << "<>OK" << std::endl;
+    //std::cout << "<>Waiting.." << std::endl;
+    packet_send_cv.wait(lk, std::bind(&ClientSender::canAdvance, this));
+    //std::cout << "<>OK" << std::endl;
 
   }
 
   auto next_seq_num = getNextSeqNum();
-  std::cout << "next_seq_num: " << next_seq_num << std::endl;
+  //std::cout << "next_seq_num: " << next_seq_num << std::endl;
   {
     std::lock_guard<std::mutex> lg(ackcount_mutex);
     max_seq_num_sent = next_seq_num;
-    if (next_seq_num == 0 && (last_acked_packet == max_seq_num_b10)) {
-      last_acked_packet = -1;
-    }
   }
 
   window_map[next_seq_num] = generatePacket(raw_data, next_seq_num);
   auto &packet = *(window_map[next_seq_num]);
 
-  std::cout << "sendPacketReliable, sending: '" << packet.generatePacketString() << "'" << std::endl;
+  /*std::cout << "sendPacketReliable, sending: '" << packet.generatePacketString() << "'" << std::endl;*/
   packet.startTimeoutCount();
   sendPacketUnreliable(packet.generatePacketString());
 
-  std::cout << "getBaseIdx() == getNextSeqNum()?, base_idx: " << getBaseIdx() << ", nextseqnum: " << getNextSeqNum()
-            << std::endl;
+  /*std::cout << "getBaseIdx() == getNextSeqNum()?, base_idx: " << getBaseIdx() << ", nextseqnum: " << getNextSeqNum()
+            << std::endl;*/
 
   if (getBaseIdx() == getNextSeqNum()) {
     startTimeoutTimer();
@@ -140,7 +147,9 @@ void ClientSender::timeoutHandler() {
     return;
   }
   std::cout << "timeout... timeoutHandler working" << std::endl;
-  for (int i = getBaseIdx(); i < getNextSeqNum(); i++) {
+  auto nseqnum = getNextSeqNum();
+  auto bidx = getBaseIdx();
+  for (int i = bidx; (nseqnum >= bidx && i < nseqnum) || (nseqnum < base_idx &&  (i >= base_idx  || i < nseqnum)); i = (i+1) % (max_seq_num_b10 + 1)) {
     auto &packet = window_map[i];
     packet->setRetransmitted();
     sendPacketUnreliable(packet->generatePacketString());
@@ -164,6 +173,7 @@ bool ClientSender::sendChunk() {
   std::unique_lock<std::mutex> ul(chunk_sent_mutex);
   chunk_sent_cv.wait(ul, [cs = this, chunk_packets_qty = chunk_packets_qty]() {
     auto current_acked = cs->getAckedPacketsCount();
+    std::cout << "Current Acked: " << current_acked << "/"<< chunk_packets_qty << std::endl;
 
     return current_acked == chunk_packets_qty;
   });
@@ -228,11 +238,13 @@ void ClientSender::ackedPacket(int seqnum) {
       endConnection();
       return;
     }
-    if (seqnum > max_seq_num_sent) {
-      std::cout << "seqnum > max_seq_num_sent:" << seqnum << " > " << max_seq_num_sent << std::endl;
+
+    auto current_base_idx = getBaseIdx();
+    if(!((last_acked_packet < current_base_idx && ((seqnum >= current_base_idx && seqnum <= max_seq_num_b10) || (seqnum >= 0 && seqnum <= last_acked_packet) ) ) ||
+        (last_acked_packet >= current_base_idx && seqnum >= current_base_idx && seqnum <= last_acked_packet))){
+      //std::cout << "ACK CONDITION SKIP" << std::endl;
       return;
     }
-    //std::cout << "Acked packet, seqnum: " << seqnum << ", last_acked_packet =" << last_acked_packet << std::endl;
 
 
     auto &packet = *window_map[seqnum];
@@ -245,39 +257,34 @@ void ClientSender::ackedPacket(int seqnum) {
 
       estimated_rtt = (int)((1 - ALPHA) * estimated_rtt + ALPHA * sampled_rtt);
       std::cout << "SAMPLED_RTT: " << sampled_rtt << std::endl;
-      std::cout << "estimated_rtt: " << estimated_rtt << std::endl;
-
-
+      std::cout << "ESTIMATED_RTT: " << estimated_rtt << std::endl;
     }
 
-    if (seqnum < last_acked_packet) {
-      std::cout << "seqnum < last_acked_packed: " << seqnum << " < " << last_acked_packet << std::endl;
-      return;
-    } else {
-      //std::cout << "continuing" << std::endl;
-    }
   }
-
-  if (seqnum + 1 == getBaseIdx()) {
-    return;
-  }
-
 
   setBaseIdx(seqnum + 1);
-  if (getBaseIdx() == getNextSeqNum()) {
-    std::cout << "getBaseIdx() == getNextSeqNum()" << std::endl;
+  auto current_base_idx = getBaseIdx();
+
+  if (current_base_idx == getNextSeqNum()) {
     std::lock_guard<std::mutex> lg(timer_mutex);
     timeoutTimer->stop();
   } else {
-    std::cout << "startTimeoutTimer" << std::endl;
     startTimeoutTimer();
   }
 
   {
     std::lock_guard<std::mutex> lg(ackcount_mutex);
+    /*
     std::cout << "seqnum - last_acked_packet=" << seqnum << "-" << last_acked_packet << "="
-              << seqnum - last_acked_packet << std::endl;
-    acked_count += seqnum - last_acked_packet;
+              << seqnum - last_acked_packet << std::endl;*/
+
+    if(seqnum < last_acked_packet){
+      acked_count += (max_seq_num_b10 - last_acked_packet) + seqnum + 1;
+    }
+    else{
+      acked_count += seqnum - last_acked_packet;
+    }
+
     last_acked_packet = seqnum;
   }
 
@@ -327,10 +334,12 @@ void ClientSender::incNextSeqNum() {
 int ClientSender::getBaseIdx() {
   std::lock_guard<std::mutex> lk(bidx_mutex);
   auto result = base_idx;
+
   return result;
 }
 
 void ClientSender::setBaseIdx(int new_value) {
+  //std::cout << "UPDATING setBaseIdx" << std::endl;
   std::lock_guard<std::mutex> lk(bidx_mutex);
   base_idx = new_value % (max_seq_num_b10 + 1);
 }
@@ -344,4 +353,3 @@ void ClientSender::calculateEstimatedRTT() {
 
 
 }
-
