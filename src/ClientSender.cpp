@@ -31,10 +31,7 @@ ClientSender::ClientSender(int chunkSize, ClientSubject *clientSubject) :
         acked_count(0),
         last_acked_packet(-1),
         max_seq_num_sent(-1),
-        finished_sending_data(false),
-
-        sampled_rtts(max_seq_num_b10 + 1, 0),
-        estimated_rtts(max_seq_num_b10 + 1, 1000)
+        finished_sending_data(false)
         {
   asio::socket_base::send_buffer_size option(packet_size + 32 + max_seq_number + 256);
   socket.set_option(option);
@@ -226,6 +223,7 @@ void ClientSender::threadFun() {
   }
   clientSubject->stopReceiver();
   std::cout << "ending connection" << std::endl;
+  std::cout << "last estimated rtt: " << estimated_rtt << std::endl;
 }
 
 void ClientSender::ackedPacket(int seqnum) {
@@ -239,15 +237,13 @@ void ClientSender::ackedPacket(int seqnum) {
       return;
     }
 
-    auto current_base_idx = getBaseIdx();
-    if(!((last_acked_packet < current_base_idx && ((seqnum >= current_base_idx && seqnum <= max_seq_num_b10) || (seqnum >= 0 && seqnum <= last_acked_packet) ) ) ||
-        (last_acked_packet >= current_base_idx && seqnum >= current_base_idx && seqnum <= last_acked_packet))){
-      //std::cout << "ACK CONDITION SKIP" << std::endl;
-      return;
-    }
+    //auto current_base_idx = getBaseIdx();
 
 
     auto &packet = *window_map[seqnum];
+    if(packet.getAcked()){
+      return;
+    }
 
     if(!packet.getRetransmitted()){
       std::lock_guard<std::mutex> rtt_lock(estimated_rtt_mutex);
@@ -286,6 +282,8 @@ void ClientSender::ackedPacket(int seqnum) {
     }
 
     last_acked_packet = seqnum;
+    auto &packet = *window_map[seqnum];
+    packet.setAcked();
   }
 
 

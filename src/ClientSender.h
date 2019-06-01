@@ -74,9 +74,6 @@ class ClientSender {
 
   std::vector<std::unique_ptr<Packet>> window_map;
 
-  std::vector<int> sampled_rtts;
-  std::vector<int> estimated_rtts;
-
   int estimated_rtt = TIMEOUT_MILLISECONDS_WAIT;
 
 

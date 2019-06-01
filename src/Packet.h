@@ -23,10 +23,12 @@ class Packet {
   std::string packetString;
   bool cached;
 
-  bool retransmitted;// = false;
-  std::mutex retransmitted_mutex;
+  volatile bool retransmitted;// = false;
+  std::mutex packet_mutex;
 
   std::chrono::milliseconds starting_time;
+
+  volatile bool acked;
 
 
 public:
@@ -40,6 +42,7 @@ public:
           packet_data(packet_data),
           cached(false),
           retransmitted(false),
+          acked(false),
           starting_time(0)
           {
   }
@@ -62,14 +65,14 @@ public:
 
   static bool checkPacketIntegrity(const std::string &raw_full_packet, int seqnum_digits, bool checkACK = true) {
     auto endOfMD5Str = seqnum_digits + 32;
-    auto md5String = raw_full_packet.substr(seqnum_digits, endOfMD5Str);
+    auto md5String = raw_full_packet.substr(seqnum_digits, 32);
 
     std::string dataString, dataStringHashed;
 
     if (checkACK) {
       dataString = raw_full_packet.substr(0, seqnum_digits);
     } else {
-      dataString = raw_full_packet.substr(endOfMD5Str, raw_full_packet.length());
+      dataString = raw_full_packet.substr(endOfMD5Str);
     }
     dataStringHashed = getHashFromString(dataString);
 
@@ -112,14 +115,26 @@ public:
   }
 
   void setRetransmitted(){
-    std::lock_guard<std::mutex> lg(retransmitted_mutex);
+    std::lock_guard<std::mutex> lg(packet_mutex);
     retransmitted = true;
   }
 
   bool getRetransmitted(){
-    std::lock_guard<std::mutex> lg(retransmitted_mutex);
+    std::lock_guard<std::mutex> lg(packet_mutex);
     return retransmitted;
   }
+
+
+  void setAcked(){
+    std::lock_guard<std::mutex> lg(packet_mutex);
+    acked = true;
+  }
+
+  bool getAcked(){
+    std::lock_guard<std::mutex> lg(packet_mutex);
+    return acked;
+  }
+
 
   void startTimeoutCount(){
     starting_time = std::chrono::duration_cast<std::chrono::milliseconds >(
