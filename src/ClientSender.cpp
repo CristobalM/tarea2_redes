@@ -148,6 +148,11 @@ void ClientSender::timeoutHandler() {
   auto bidx = getBaseIdx();
   for (int i = bidx; (nseqnum >= bidx && i < nseqnum) || (nseqnum < base_idx &&  (i >= base_idx  || i < nseqnum)); i = (i+1) % (max_seq_num_b10 + 1)) {
     auto &packet = window_map[i];
+
+    if(!packet || packet->getAcked()){
+      continue;
+    }
+
     packet->setRetransmitted();
     sendPacketUnreliable(packet->generatePacketString());
   }
@@ -307,6 +312,7 @@ void ClientSender::setAckedPacketsCount(int newval) {
 
 
 void ClientSender::sendPacketUnreliable(const std::string &data, int ms_to_sleep) {
+  std::cout << "Sending: '" << data << "'" << std::endl;
   socket.send_to(asio::buffer(data), endpoint);
   if (ms_to_sleep > 0) {
     std::this_thread::sleep_for(std::chrono::milliseconds(ms_to_sleep));
