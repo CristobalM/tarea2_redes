@@ -93,7 +93,7 @@ bool ClientSender::canAdvance() {
   //std::cout << "last acked packet: " << this->last_acked_packet << std::endl;
 
   return (base_idx_ <= next_seq_num_ && next_seq_num_ < base_idx_ + wsize_) ||
-      (base_idx_ < next_seq_num_ && next_seq_num_ < (base_idx_ + wsize_ ) % (this->max_seq_num_b10 +1) );
+      (base_idx_ > next_seq_num_ && next_seq_num_ < (base_idx_ + wsize_ ) % (this->max_seq_num_b10 +1) );
 
   /*
   return ((next_seq_num_ == 0 && (cs->last_acked_packet == cs->max_seq_num_b10 || cs->last_acked_packet <= 0)) ||
@@ -104,15 +104,15 @@ bool ClientSender::canAdvance() {
 
 
 void ClientSender::sendPacketReliable(const std::string &raw_data) {
-  {
-    std::unique_lock<std::mutex> lk(packet_send_mutex);
-    //std::cout << "<>Waiting.." << std::endl;
-    packet_send_cv.wait(lk, std::bind(&ClientSender::canAdvance, this));
-    //std::cout << "<>OK" << std::endl;
 
-  }
+  std::unique_lock<std::mutex> lk(packet_send_mutex);
+  //std::cout << "<>Waiting.." << std::endl;
+  packet_send_cv.wait(lk, std::bind(&ClientSender::canAdvance, this));
+  //std::cout << "<>OK" << std::endl;
+
 
   auto next_seq_num = getNextSeqNum();
+  std::cout << "First time sending " << next_seq_num << std::endl;
   //std::cout << "next_seq_num: " << next_seq_num << std::endl;
   {
     std::lock_guard<std::mutex> lg(ackcount_mutex);
@@ -138,20 +138,22 @@ void ClientSender::sendPacketReliable(const std::string &raw_data) {
 
 
 void ClientSender::timeoutHandler() {
-  std::lock_guard<std::mutex> lg(ackcount_mutex);
-  if(finished_sending_data){
-    std::cout << "timeoutHandler: Cancelling.." << std::endl;
-    return;
+  {
+    std::lock_guard<std::mutex> lg(ackcount_mutex);
+    if (finished_sending_data) {
+      std::cout << "timeoutHandler: Cancelling.." << std::endl;
+      return;
+    }
   }
-  std::cout << "timeout... timeoutHandler working" << std::endl;
+  //std::cout << "timeout... timeoutHandler working" << std::endl;
+  std::unique_lock<std::mutex> lk(packet_send_mutex);
   auto nseqnum = getNextSeqNum();
   auto bidx = getBaseIdx();
-  for (int i = bidx; (nseqnum >= bidx && i < nseqnum) || (nseqnum < base_idx &&  (i >= base_idx  || i < nseqnum)); i = (i+1) % (max_seq_num_b10 + 1)) {
+  auto buffer_size = (max_seq_num_b10 + 1);
+  auto wsize = getWindowSize();
+  for (int i = bidx; (nseqnum >= bidx && i < nseqnum) || (nseqnum < bidx && buffer_size - (bidx - nseqnum) <= wsize &&  (i >= bidx  || i < nseqnum)); i = (i+1) % buffer_size) {
+    std::cout << "Resending packet " << i << std::endl;
     auto &packet = window_map[i];
-
-    if(!packet || packet->getAcked()){
-      continue;
-    }
 
     packet->setRetransmitted();
     sendPacketUnreliable(packet->generatePacketString());
@@ -242,9 +244,6 @@ void ClientSender::ackedPacket(int seqnum) {
       return;
     }
 
-    //auto current_base_idx = getBaseIdx();
-
-
     auto &packet = *window_map[seqnum];
     if(packet.getAcked()){
       return;
@@ -257,18 +256,22 @@ void ClientSender::ackedPacket(int seqnum) {
 
 
       estimated_rtt = (int)((1 - ALPHA) * estimated_rtt + ALPHA * sampled_rtt);
-      std::cout << "SAMPLED_RTT: " << sampled_rtt << std::endl;
-      std::cout << "ESTIMATED_RTT: " << estimated_rtt << std::endl;
+      std::cout << "SAMPLED_RTT: " << sampled_rtt;
+      std::cout << ". ESTIMATED_RTT: " << estimated_rtt << std::endl;
     }
 
   }
 
   setBaseIdx(seqnum + 1);
   auto current_base_idx = getBaseIdx();
+  auto current_next_seqn = getNextSeqNum();
+  std::cout << "Base IDx: " << current_base_idx << ", nextseqnum: " << current_next_seqn << std::endl;
 
-  if (current_base_idx == getNextSeqNum()) {
+  if (current_base_idx == current_next_seqn) {
     std::lock_guard<std::mutex> lg(timer_mutex);
     timeoutTimer->stop();
+    std::cout << "current_base_idx == getNextSeqNum()";
+    std::cout << "STOPPING TIMEOUT" << std::endl;
   } else {
     startTimeoutTimer();
   }
@@ -312,7 +315,7 @@ void ClientSender::setAckedPacketsCount(int newval) {
 
 
 void ClientSender::sendPacketUnreliable(const std::string &data, int ms_to_sleep) {
-  std::cout << "Sending: '" << data << "'" << std::endl;
+  //std::cout << "Sending: '" << data << "'" << std::endl;
   socket.send_to(asio::buffer(data), endpoint);
   if (ms_to_sleep > 0) {
     std::this_thread::sleep_for(std::chrono::milliseconds(ms_to_sleep));
